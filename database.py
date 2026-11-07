@@ -7,7 +7,7 @@ def connect_to_database():
             port="5432",
             database="banksystemmanagement",
             user="postgres",
-            password=1592005
+            password="1592005"
         )
         print("Connected to PostgresSQL database!")
         return connection
