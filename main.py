@@ -37,7 +37,8 @@ def inialize_tables():
             action varchar(100) not null,
             amount decimal(15,2) default 0.00,
             timestamp timestamp default current_timestamp,
-            FOREIGN KEY (account_number) references accounts(account_number) ON DELETE CASCADE
+            FOREIGN KEY (account_number) references accounts(account_number) 
+            ON DELETE CASCADE
         );
         """
         
@@ -321,6 +322,8 @@ class BankSystem:
             return account
         return None
     
+    def update_account(self, account):
+        return account.save_to_db()
     def delete_account(self, account_number, pin):
         account = Account.load_from_db(account_number, pin)
         if account:
@@ -453,9 +456,7 @@ def withdraw_money_cli(bank,account,pin):
     print("=" * 40)
     print("Withdraw MONEY")
     print("=" * 40)
-    
     amount =get_valid_amount("Enter Withdraw Amount : Rs")
-    
     if bank.withdraw(account.get_account_number(),pin,amount):
         print(f"Rs{amount:.2f} successfully withdrawn.")
         balance=bank.get_account_balance(account.get_account_number(),pin)    
@@ -466,13 +467,98 @@ def withdraw_money_cli(bank,account,pin):
     input("Press Enter to continue...")
 
 def transaction_history_cli(bank,account,pin):
-    pass
+    print("=" * 40)
+    print("USER TRANSACTION HISTORY")
+    print("=" * 40)
+    logs = bank.get_single_audit_logs(account.get_account_number())
+    if not logs:
+        print("No Transaction Found.")
+    else:
+        for log in logs:
+            print(f"log['timestamp'] {log['action']} - Rs{log['amount']:.2f} By: {log['holder_name']}")
+    input("Press Enter to continue...")
 
-def update_account_cli(bank,account,pin):
-    pass
+def update_account_info_cli(bank,account,pin):
+    print("=" * 40)
+    print("UPDATE ACCOUNT INFO")
+    print("=" * 40)
+    new_name = input("Enter your Name: ").strip()
+    if new_name:
+        account.set_name(new_name)
+        if bank.update_account(account):
+            Audit.log_action(
+                account.get_account_number(),
+                account.get_name(),
+                "Account info upated",
+                0.0,
+            )
+            print("Name updated successfully")
+        else:
+            print("Error updating Name")
+    else:
+        print("No Changes made.")
+    input("Press enter to contiinue...")
+
+def change_pin_logout_cli(bank,account,pin):
+    print("=" * 40)
+    print("CHANGE ACCOUNT PIN")
+    print("=" * 40)
+    old_pin=input("Enter current PIN").strip()
+    if old_pin != pin:
+        print("Incorrect currect pin.")
+        input("Press enter to contiinue...")
+        return False
+    
+    new_pin = input("Enter 4 digit new PIN: ").strip()
+    if len(new_pin) != 4 or not new_pin.isdigit():
+        print("PIN must be a 4-digit number.")
+        input("Press Enter to continue...")
+        return
+    
+    confirm_pin = input("Confirm your PIN: ").strip()
+    if new_pin != confirm_pin:
+        print("PINs do not match.")
+        input("Press Enter to continue...")
+        return False
+    account.set_pin_hash(new_pin)
+    if bank.update_account(account):
+            Audit.log_action(
+                account.get_account_number(),
+                account.get_name(),
+                "PIN change (Auto Logout)",
+                0.0,
+            )
+            print("Pin update  successfuly. You will be logged out")
+            input("Press enter to contiinue...")
+            return True 
+    print("Error updating PIN, try again.")
+    input("Press enter to contiinue...")
+    return False
 
 def delete_account_cli(bank,account,pin):
-    pass
+    print("=" * 40)
+    print("CLOASE ACCOUNT")
+    print("=" * 40)
+    confirm=input("Are you sure, you  want to delete this account? (yes/no)").strip().lower()
+    if confirm != "yes":
+        print("Account deletion cancelled.")
+        input("Press enter to contiinue...")
+        return False
+    
+    re_pin = input("re-enter you PIN to confirm: ").strip()
+    if re_pin !=pin:
+        print("PIN did not match. Account not closed ")
+        input("Press Enter to continue...")
+        return
+    
+    if bank.delete_account(account.get_account_number(),pin):
+        print("Account closed succefully")
+        input("Press Enter to continue...")
+        return True
+   
+    print("Error closing account, try again.")
+    input("Press enter to continue...")
+    return False
 
 # LOGIN ACCOUNT CLI FUNCTION
 def login_account_cli(bank):
@@ -505,8 +591,9 @@ def login_account_cli(bank):
         print("3. Withdraw Balance")
         print("4. Transaction History")
         print("5. Update Account Info")
-        print("6. Cloase Account")
-        print("7. Logout")
+        print("6. Update Account Pin")
+        print("7. Close Account")
+        print("8. Logout")
         print("=" * 40)
         choice = input("Enter your choice (1-7): ").strip()
         
@@ -519,11 +606,15 @@ def login_account_cli(bank):
         elif choice == "4":
             transaction_history_cli(bank,account,pin)
         elif choice == "5":
-            update_account_cli(bank,account,pin)
+           update_account_info_cli(bank,account,pin)
         elif choice == "6":
-            delete_account_cli(bank,account,pin)
+            change_pin_logout_cli(bank,account,pin)
+            break
         elif choice == "7":
-            print("Thank you so much for using our services, do visit again!")
+            if delete_account_cli(bank,account,pin):
+                break
+        elif choice == "8":
+            # print("Thank you so much for using our services, do visit again!")
             break
         else:
             print("Invalid choice, try again")
