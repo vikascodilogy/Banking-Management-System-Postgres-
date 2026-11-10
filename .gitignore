@@ -1,0 +1,7 @@
+# Database configuration file jisme password hai
+database.py
+
+# Python cache files
+__pycache__/
+.env
+.venv/
